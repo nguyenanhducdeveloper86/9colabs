@@ -55,6 +55,10 @@ GLOBAL_COMMANDS = {"pay", "readme", "skill", "update", "version", "help"}
 
 HELP_BANNER = """9colab — Multi-account controller & failover router for google-colab-cli
 
+Dashboard:
+  9colab                                 Start the web dashboard at http://127.0.0.1:8765
+  9colab ui [--port N] [--no-open]       Same, with custom port or without opening the browser
+
 Multi-Account Commands:
   9colab add [name]                      Authorize a new Google Colab account (auto-names acc1, acc2, ...)
   9colab import [name]                   Import current ~/.config/colab-cli login as [name]
@@ -443,7 +447,7 @@ def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     store = AccountStore()
 
-    if not raw_argv or raw_argv[0] in ("-h", "--help", "help") and len(raw_argv) == 1:
+    if raw_argv and raw_argv[0] in ("-h", "--help", "help") and len(raw_argv) == 1:
         print(HELP_BANNER)
         try:
             colab_bin = find_colab_bin()
@@ -451,6 +455,15 @@ def main(argv: list[str] | None = None) -> int:
         except Exception:
             pass
         return 0
+
+    if not raw_argv or raw_argv[0] == "ui":
+        from ninecolab.ui import run_ui_server
+
+        ui_args = raw_argv[1:]
+        port = 8765
+        if "--port" in ui_args:
+            port = int(ui_args[ui_args.index("--port") + 1])
+        return run_ui_server(store, port=port, open_browser="--no-open" not in ui_args)
 
     top = raw_argv[0]
     if top == "account":

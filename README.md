@@ -87,7 +87,19 @@ Log in additional Google Colab / AI Pro accounts (auto-names `acc2`, `acc3`, ...
 
 > **Note:** Each `9colab add` call generates a new OAuth2 URL with a unique PKCE code verifier. Always open the latest URL printed in the terminal and paste the code from that URL.
 
-### 2. Inspect All Accounts at Once
+### 2. Open the Web Dashboard
+
+Run `9colab` with no arguments. It starts a local server and opens `http://127.0.0.1:8765`.
+
+```bash
+9colab                      # or: 9colab ui --port 9000 --no-open
+```
+
+The dashboard shows units, burn rate, GPU/TPU pool, sessions and cooldowns for every account. You can switch Mode B/C, clear cooldowns, create or stop VMs, add accounts through the OAuth flow, and remove accounts. It refreshes every 10 seconds.
+
+The server binds to `127.0.0.1` only and has no login. It rejects requests with a foreign `Host` header and non-JSON `POST` bodies. Do not expose the port to a network.
+
+### 3. Inspect All Accounts in the Terminal
 
 ```bash
 9colab list
@@ -159,6 +171,7 @@ You do not need to remember which account owns a session. `9colab` scans all pro
 
 | Category | Command | Description |
 |---|---|---|
+| **Dashboard** | `9colab` / `9colab ui [--port N] [--no-open]` | Start the local web dashboard. |
 | **Account Management** | `9colab add [name]` | Authorize and save a new Google account profile (auto-names `acc1`, `acc2`, ... if omitted). |
 | | `9colab import [name]` | Copy `~/.config/colab-cli` into account `[name]`. |
 | | `9colab list` / `9colab usage` | Display compute units, GPUs, TPUs, and status across all accounts. |
