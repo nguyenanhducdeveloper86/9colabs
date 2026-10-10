@@ -56,8 +56,8 @@ GLOBAL_COMMANDS = {"pay", "readme", "skill", "update", "version", "help"}
 HELP_BANNER = """9colab — Multi-account controller & failover router for google-colab-cli
 
 Multi-Account Commands:
-  9colab add <name>                      Authorize a new Google Colab account (OAuth2)
-  9colab import <name>                   Import current ~/.config/colab-cli login as <name>
+  9colab add [name]                      Authorize a new Google Colab account (auto-names acc1, acc2, ...)
+  9colab import [name]                   Import current ~/.config/colab-cli login as [name]
   9colab list                            Show balance, GPUs, TPUs, and status across all accounts
   9colab mode [B|C|round-robin|fill-first]
                                          Get or set account selection mode:
@@ -209,8 +209,8 @@ def exec_colab_interactive(
     os.execvpe(colab_bin, [colab_bin, *args], env)
 
 
-def cmd_add(store: AccountStore, name: str) -> int:
-    valid = validate_account_name(name)
+def cmd_add(store: AccountStore, name: str | None = None) -> int:
+    valid = validate_account_name(name) if name else store.next_account_name()
     store.ensure_profile(valid)
     colab_bin = find_colab_bin()
     env = build_account_env(store, valid)
@@ -221,11 +221,11 @@ def cmd_add(store: AccountStore, name: str) -> int:
     res = subprocess.run([colab_bin, "--auth", "oauth2", "usage"], env=env)
     tpath = store.token_path(valid)
     if not tpath.is_file():
+        shutil.rmtree(store.profile_home(valid), ignore_errors=True)
         sys.stderr.write(
             f"[9colab] Login failed: no token.json created at {tpath}\n"
         )
         return res.returncode or 1
-
     os.chmod(tpath, 0o600)
     try:
         token = get_valid_access_token(store, valid)
@@ -237,8 +237,10 @@ def cmd_add(store: AccountStore, name: str) -> int:
     return 0
 
 
-def cmd_import(store: AccountStore, name: str, src_home: str | None = None) -> int:
-    valid = validate_account_name(name)
+def cmd_import(
+    store: AccountStore, name: str | None = None, src_home: str | None = None
+) -> int:
+    valid = validate_account_name(name) if name else store.next_account_name()
     src = Path(src_home).expanduser() if src_home else Path.home()
     store.import_from_home(valid, src)
     try:
@@ -410,11 +412,12 @@ def handle_account_subcommand(store: AccountStore, args: list[str]) -> int:
     if not args or args[0] == "list":
         return cmd_list(store)
     sub = args[0]
-    if sub == "add" and len(args) >= 2:
-        return cmd_add(store, args[1])
-    if sub == "import" and len(args) >= 2:
+    if sub == "add":
+        return cmd_add(store, args[1] if len(args) >= 2 else None)
+    if sub == "import":
+        name = args[1] if len(args) >= 2 else None
         src = args[2] if len(args) >= 3 else None
-        return cmd_import(store, args[1], src)
+        return cmd_import(store, name, src)
     if sub == "rm" and len(args) >= 2:
         store.remove_account(args[1])
         print(f"[9colab] Removed account '{args[1]}'.")
@@ -452,11 +455,12 @@ def main(argv: list[str] | None = None) -> int:
     top = raw_argv[0]
     if top == "account":
         return handle_account_subcommand(store, raw_argv[1:])
-    if top == "add" and len(raw_argv) >= 2:
-        return cmd_add(store, raw_argv[1])
-    if top == "import" and len(raw_argv) >= 2:
+    if top == "add":
+        return cmd_add(store, raw_argv[1] if len(raw_argv) >= 2 else None)
+    if top == "import":
+        name = raw_argv[1] if len(raw_argv) >= 2 else None
         src = raw_argv[2] if len(raw_argv) >= 3 else None
-        return cmd_import(store, raw_argv[1], src)
+        return cmd_import(store, name, src)
     if top == "list" and len(raw_argv) == 1:
         return cmd_list(store)
     if top == "mode":

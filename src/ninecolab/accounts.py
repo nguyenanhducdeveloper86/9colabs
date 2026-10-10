@@ -82,6 +82,13 @@ class AccountStore:
         ]
         return sorted(names)
 
+    def next_account_name(self, prefix: str = "acc") -> str:
+        existing = set(self.list_accounts())
+        idx = 1
+        while f"{prefix}{idx}" in existing:
+            idx += 1
+        return f"{prefix}{idx}"
+
     def import_from_home(self, name: str, src_home: Path | None = None) -> Path:
         source_root = Path(src_home) if src_home else Path.home()
         src_cfg = source_root / ".config" / "colab-cli"

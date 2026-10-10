@@ -75,14 +75,14 @@ export PATH="$HOME/.local/bin:$PATH"
 If you already logged in with `colab`, import that session as your first account:
 
 ```bash
-9colab import pro1
+9colab import
 ```
 
-Log in additional Google Colab / AI Pro accounts:
+Log in additional Google Colab / AI Pro accounts (auto-names `acc2`, `acc3`, ... or pass a custom name):
 
 ```bash
+9colab add
 9colab add pro2
-9colab add pro3
 ```
 
 > **Note:** Each `9colab add` call generates a new OAuth2 URL with a unique PKCE code verifier. Always open the latest URL printed in the terminal and paste the code from that URL.
@@ -159,8 +159,8 @@ You do not need to remember which account owns a session. `9colab` scans all pro
 
 | Category | Command | Description |
 |---|---|---|
-| **Account Management** | `9colab add <name>` | Authorize and save a new Google account profile. |
-| | `9colab import <name>` | Copy `~/.config/colab-cli` into account `<name>`. |
+| **Account Management** | `9colab add [name]` | Authorize and save a new Google account profile (auto-names `acc1`, `acc2`, ... if omitted). |
+| | `9colab import [name]` | Copy `~/.config/colab-cli` into account `[name]`. |
 | | `9colab list` / `9colab usage` | Display compute units, GPUs, TPUs, and status across all accounts. |
 | | `9colab mode [B\|C\|round-robin\|fill-first]` | Show or change the account selection strategy. |
 | | `9colab account rm <name>` | Delete a saved account profile. |

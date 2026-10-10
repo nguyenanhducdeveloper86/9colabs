@@ -86,6 +86,13 @@ class TestAccounts(unittest.TestCase):
         owner3, _ = self.store.resolve_session_owner("s-alpha", explicit_account="acc1")
         self.assertEqual(owner3, "acc1")
 
+    def test_next_account_name_auto_increments(self):
+        self.assertEqual(self.store.next_account_name(), "acc1")
+        p = self.store.token_path("acc1")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("{}")
+        self.assertEqual(self.store.next_account_name(), "acc2")
+
 
 if __name__ == "__main__":
     unittest.main()
