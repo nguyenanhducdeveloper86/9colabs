@@ -260,10 +260,8 @@ def cmd_list(store: AccountStore) -> int:
         print("No accounts registered. Run '9colab add <name>' or '9colab import <name>'.")
         return 0
 
-    header = (
-        f"{'ACCOUNT':<12} {'EMAIL':<34} {'UNITS':>8} {'RATE/HR':>8} "
-        f"{'SESSIONS':>8} {'GPUS':<14} {'TPUS':<10} {'STATUS'}"
-    )
+    now = time.time()
+    rows: list[dict] = []
     with ThreadPoolExecutor(max_workers=min(8, len(accounts))) as pool:
         futs = {
             pool.submit(fetch_account_status, store, acct, now): acct
@@ -274,18 +272,17 @@ def cmd_list(store: AccountStore) -> int:
 
     rows.sort(key=lambda r: r["account"])
     header = (
-        f"{'ACCOUNT':<12} {'EMAIL':<30} {'UNITS':>8} {'RATE/HR':>8} "
+        f"{'ACCOUNT':<12} {'EMAIL':<34} {'UNITS':>8} {'RATE/HR':>8} "
         f"{'SESSIONS':>8} {'GPUS':<14} {'TPUS':<10} {'STATUS'}"
     )
     print(header)
     print("-" * len(header))
     total_units = 0.0
     total_sessions = 0
-        print(
-            f"{r['account']:<12} {r['email'][:34]:<34} {r['balance']:>8.2f} "
-            f"{r['rate']:>8.2f} {r['assignments']:>8d} {gpus[:14]:<14} "
-            f"{tpus[:10]:<10} {status}"
-        )
+    for r in rows:
+        total_units += r["balance"]
+        total_sessions += r["assignments"]
+        gpus = ",".join(r["gpus"]) if r["gpus"] else "-"
         tpus = ",".join(r["tpus"]) if r["tpus"] else "-"
         if r["error"]:
             status = f"ERR: {r['error'][:28]}"
@@ -294,7 +291,7 @@ def cmd_list(store: AccountStore) -> int:
         else:
             status = "READY"
         print(
-            f"{r['account']:<12} {r['email'][:30]:<30} {r['balance']:>8.2f} "
+            f"{r['account']:<12} {r['email'][:34]:<34} {r['balance']:>8.2f} "
             f"{r['rate']:>8.2f} {r['assignments']:>8d} {gpus[:14]:<14} "
             f"{tpus[:10]:<10} {status}"
         )
