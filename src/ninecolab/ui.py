@@ -28,6 +28,8 @@ from ninecolab.accounts import (
 from ninecolab.cli import build_account_env, find_colab_bin, run_colab_stream
 from ninecolab.pick import normalize_mode, run_with_failover
 
+PORT_SEARCH_RANGE = 20
+
 OAUTH_CLIENT_ID = (
     "764086051850-6qr4p6gpi6hn506pt8ejuq83di341hur.apps.googleusercontent.com"
 )
@@ -696,8 +698,17 @@ def run_ui_server(
     open_browser: bool = True,
 ) -> int:
     service = DashboardService(store)
-    server = ThreadingHTTPServer((host, port), make_handler(service))
-    url = f"http://{host}:{port}"
+    server = None
+    for candidate in range(port, port + PORT_SEARCH_RANGE):
+        try:
+            server = ThreadingHTTPServer((host, candidate), make_handler(service))
+            break
+        except OSError:
+            print(f"[9colab] Port {candidate} is busy, trying {candidate + 1}...")
+    if server is None:
+        print(f"[9colab] No free port in {port}-{port + PORT_SEARCH_RANGE - 1}.")
+        return 1
+    url = f"http://{host}:{server.server_address[1]}"
     print(f"[9colab] Dashboard running at {url} (Ctrl+C to stop)")
     if open_browser:
         webbrowser.open(url)
