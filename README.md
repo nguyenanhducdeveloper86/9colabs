@@ -1,28 +1,45 @@
+<div align="center">
+
 # 9colab
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Dependencies: 0](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](#installation)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
-[![Powered by google-colab-cli](https://img.shields.io/badge/powered%20by-google--colab--cli-orange.svg)](https://github.com/googlecolab/google-colab-cli)
+**Multi-Account GPU Pool Controller, Automatic Failover Router, and Cluster Dashboard for Google Colab CLI**
 
-**9colab** is a multi-account controller, quota failover router, and parallel job runner for [`google-colab-cli`](https://github.com/googlecolab/google-colab-cli).
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3b82f6.svg)](https://www.python.org/)
+[![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-10b981.svg)](#installation)
+[![Commands: 100% Parity](https://img.shields.io/badge/colab--cli-100%25%20parity-f59e0b.svg)](#command-reference)
+[![License: MIT](https://img.shields.io/badge/license-MIT-a855f7.svg)](LICENSE)
 
-Pool multiple Google Colab or Google AI Pro accounts into one CLI. Inspect eligible GPUs (`T4`, `L4`, `A100`, `H100`) and TPUs across all accounts in one table. Route `new` and `run` jobs automatically with Round-Robin (**Mode B**) or Fill-First (**Mode C**) selection. Fail over to the next account when Google returns HTTP 412 (`Allocation refused`).
+<p align="center">
+  <a href="#why-9colab">Why 9colab?</a> &bull;
+  <a href="#installation">Installation</a> &bull;
+  <a href="#quick-start">Quick Start</a> &bull;
+  <a href="#web-dashboard">Web Dashboard</a> &bull;
+  <a href="#selection-modes--failover">Failover Modes</a> &bull;
+  <a href="#command-reference">Commands</a>
+</p>
+
+![9colab Cluster Console Dashboard](docs/assets/dashboard.png)
+
+</div>
 
 ---
 
-## Key Features
+## Why 9colab?
 
-- **Zero-Patch Account Isolation**: Isolates each Google account in `~/.9colab/accounts/<name>/` (mode `0700`). Token, `sessions.json`, history, and logs never collide.
-- **Full `ccu-info` Visibility**: Displays real-time compute units, hourly burn rate, active sessions, `eligibleGpus`, and `eligibleTpus` across all accounts in parallel. Even when `currentBalance` is `0.00`, `9colab list` shows whether an account can still allocate `T4` or `V5E1` runtimes.
-- **Two Selection Modes**:
-  - **Mode B (`round-robin`, default)**: Rotates new jobs across ready accounts.
-  - **Mode C (`fill-first`)**: Uses one account until Colab refuses allocation, then moves to the next account.
-- **Automatic Quota Failover**: Detects HTTP 412 (`Allocation refused`) and HTTP 400 (`Backend rejected accelerator`) during VM creation. Places the exhausted account in cooldown and retries on the next account. User script errors never trigger duplicate retries.
-- **100% `google-colab-cli` Parity**: Supports all 26 `colab` commands (`new`, `run`, `exec`, `ssh`, `repl`, `console`, `ls`, `upload`, `download`, `edit`, `rm`, `install`, `drivemount`, `auth`, `sessions`, `status`, `stop`, `restart-kernel`, `log`, `url`, `usage`, `whoami`, `pay`, `readme`, `skill`, `update`, `version`).
-- **Automatic Session Ownership Lookup**: Finds which account owns `-s <session>` and uses `os.execvpe` so interactive TTY commands (`ssh`, `repl`, `console`, `edit`) work natively.
-- **Parallel Multi-Account Execution**: Run a script or command across all accounts (`--all`) or selected accounts (`--on acc1,acc2`) at the same time.
-- **Zero External Dependencies**: Uses the Python standard library only.
+[`google-colab-cli`](https://github.com/googlecolab/google-colab-cli) lets you run scripts and SSH into Google Colab VMs from your terminal. However, it stores a single OAuth token at `~/.config/colab-cli/token.json`. You cannot log in multiple Google accounts or fail over when one account hits a quota limit.
+
+**9colab** turns multiple Google Colab and Google AI Pro accounts into one unified GPU/TPU pool:
+
+| Capability | `google-colab-cli` (`colab`) | `9colab` |
+|---|---|---|
+| **Accounts supported** | 1 account (`~/.config/colab-cli/token.json`) | Unlimited isolated accounts (`~/.9colab/accounts/<name>/`) |
+| **Hardware visibility** | Shows `currentBalance` only (`colab usage`) | Shows `currentBalance`, burn rate, `eligibleGpus` (`A100`, `L4`, `G4`, `T4`, `H100`), and `eligibleTpus` (`V6E1`, `V5E1`) |
+| **Account selection** | Manual re-login | **Mode B** (`round-robin`, default) and **Mode C** (`fill-first`) |
+| **HTTP 412 quota refusal** | Exits with error | Places account in cooldown and fails over to the next account |
+| **Session routing (`-s`)** | Current account only | Scans all profiles and attaches TTY (`ssh`, `repl`, `console`, `edit`) to the owner account |
+| **Parallel execution** | No | Run across all accounts (`--all`) or specific accounts (`--on acc1,acc2`) |
+| **Web telemetry UI** | No | Built-in dark cluster console (`9colab`) with CCU bars, GPU matrix, and OAuth wizard |
+| **Runtime dependencies** | `typer`, `requests`, `pydantic`, ... | **0 external dependencies** (Python standard library only) |
 
 ---
 
@@ -30,29 +47,32 @@ Pool multiple Google Colab or Google AI Pro accounts into one CLI. Inspect eligi
 
 ```mermaid
 flowchart LR
-    User["9colab CLI"] --> Router["Command Router (cli.py)"]
-    Router -->|new / run| Picker["Selector & Failover (pick.py)\nMode B: Round-Robin | Mode C: Fill-First"]
-    Router -->|exec / ssh / ls / stop| Resolver["Session Resolver (accounts.py)"]
-    Router -->|--all / --on| Pool["Parallel ThreadPool"]
-    Picker --> P1["HOME=~/.9colab/accounts/pro1\ncolab ..."]
-    Picker --> P2["HOME=~/.9colab/accounts/pro2\ncolab ..."]
-    Resolver --> P1
-    Resolver --> P2
-    Pool --> P1
-    Pool --> P2
+    CLI["9colab CLI / Web UI"] --> Router["Command & Failover Router"]
+    Router -->|"new / run"| Picker["Mode B (Round-Robin)\nMode C (Fill-First)\n+ HTTP 412 Cooldown"]
+    Router -->|"ssh / exec / ls / stop -s"| Lookup["Session Owner Resolver"]
+    Router -->|"--all / --on"| Parallel["Parallel ThreadPool"]
+    Picker --> Acc1["HOME=~/.9colab/accounts/acc1\ncolab ..."]
+    Picker --> Acc2["HOME=~/.9colab/accounts/acc2\ncolab ..."]
+    Picker --> AccN["HOME=~/.9colab/accounts/accN\ncolab ..."]
+    Lookup --> Acc1
+    Lookup --> Acc2
+    Parallel --> Acc1
+    Parallel --> AccN
 ```
 
 ---
 
 ## Installation
 
-1. Install [`google-colab-cli`](https://github.com/googlecolab/google-colab-cli) first:
+### Prerequisites
+
+Install [`google-colab-cli`](https://github.com/googlecolab/google-colab-cli) with [`uv`](https://docs.astral.sh/uv/) or `pipx`:
 
 ```bash
 uv tool install google-colab-cli
 ```
 
-2. Install `9colab`:
+### Install 9colab
 
 ```bash
 git clone https://github.com/nguyenanhducdeveloper86/9colabs.git
@@ -60,7 +80,7 @@ cd 9colabs
 uv tool install .
 ```
 
-Make sure `~/.local/bin` is in your `PATH`:
+Ensure `~/.local/bin` is in your `PATH`:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
@@ -70,34 +90,30 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ## Quick Start
 
-### 1. Import an Existing Login or Add New Accounts
+### 1. Import Your Existing Colab Login or Add New Accounts
 
-If you already logged in with `colab`, import that session as your first account:
+Import an existing `~/.config/colab-cli` login in one command:
 
 ```bash
 9colab import
 ```
 
-Log in additional Google Colab / AI Pro accounts (auto-names `acc2`, `acc3`, ... or pass a custom name):
+Add more Google Colab or Google AI Pro accounts. Omit the name to auto-number (`acc2`, `acc3`, ...), or pass a custom alias:
 
 ```bash
 9colab add
-9colab add pro2
+9colab add pro-main
 ```
 
-> **Note:** Each `9colab add` call generates a new OAuth2 URL with a unique PKCE code verifier. Always open the latest URL printed in the terminal and paste the code from that URL.
+> **Note:** Each `9colab add` call generates a new OAuth2 URL with a fresh PKCE verifier. Always open the latest URL printed in your terminal and paste the code from that page.
 
-### 2. Open the Web Dashboard
+### 2. Launch the Web Cluster Console
 
-Run `9colab` with no arguments. It starts a local server and opens `http://127.0.0.1:8765`.
+Run `9colab` with no arguments. It starts a local server on `127.0.0.1:8765` (or the next free port) and opens your browser:
 
 ```bash
-9colab                      # or: 9colab ui --port 9000 --no-open
+9colab
 ```
-
-The dashboard shows units, burn rate, GPU/TPU pool, sessions and cooldowns for every account. You can switch Mode B/C, clear cooldowns, create or stop VMs, add accounts through the OAuth flow, and remove accounts. It refreshes every 10 seconds.
-
-The server binds to `127.0.0.1` only and has no login. It rejects requests with a foreign `Host` header and non-JSON `POST` bodies. Do not expose the port to a network.
 
 ### 3. Inspect All Accounts in the Terminal
 
@@ -105,100 +121,135 @@ The server binds to `127.0.0.1` only and has no login. It rejects requests with 
 9colab list
 ```
 
-Example output:
-
 ```text
 Selection mode: B (round-robin)
-ACCOUNT      EMAIL                             UNITS  RATE/HR SESSIONS GPUS           TPUS       STATUS
-------------------------------------------------------------------------------------------------------
-pro1         user1@gmail.com                    0.00     0.00        0 T4             V5E1       READY
-pro2         user2@gmail.com                  100.00     0.00        0 T4,L4,A100     V5E1,V6E1  READY
-pro3         user3@gmail.com                    0.00     0.00        1 T4             V5E1       READY
-------------------------------------------------------------------------------------------------------
-Total accounts: 3 | Total compute units: 100.00 | Active sessions: 1
+ACCOUNT      EMAIL                                 UNITS  RATE/HR SESSIONS GPUS           TPUS       STATUS
+-----------------------------------------------------------------------------------------------------------
+acc1         user1@gmail.com                        0.00     0.00        0 T4             V5E1       READY
+acc2         user2@gmail.com                        0.00     0.00        0 T4             V5E1       READY
+acc3         user3@gmail.com                      197.66     0.00        0 G4,A100,L4,T4  V6E1,V5E1  READY
+-----------------------------------------------------------------------------------------------------------
+Total accounts: 3 | Total compute units: 197.66 | Active sessions: 0
 ```
 
-### 3. Switch Between Selection Mode B and Mode C
+### 4. Run Scripts and Create Sessions with Automatic Failover
 
 ```bash
-# Mode B (default): Rotate across accounts (Round-Robin)
-9colab mode B
-# or: 9colab mode round-robin
-
-# Mode C: Drain one account until HTTP 412 refusal, then switch (Fill-First)
-9colab mode C
-# or: 9colab mode fill-first
-```
-
-### 4. Run Jobs with Automatic Failover
-
-```bash
-# Picks an account automatically and fails over on HTTP 412 quota errors
+# Run a script on the next eligible account (fails over on HTTP 412 / GPU entitlement refusal)
 9colab run train.py --gpu T4
 
-# Create a persistent session on the next available account
-9colab new --gpu T4 -s exp1
+# Request an A100 GPU (automatically skips T4-only accounts and lands on an A100-eligible account)
+9colab run finetune.py --gpu A100
+
+# Create a persistent session
+9colab new --gpu T4 -s exp-1
 ```
 
-### 5. Control Live Sessions Across Accounts
+### 5. Control Live Sessions Without Tracking Accounts
 
-You do not need to remember which account owns a session. `9colab` scans all profiles and routes the command to the owner account:
+`9colab` locates the account that owns `-s <session>` automatically:
 
 ```bash
 9colab sessions
-9colab exec -s exp1 "nvidia-smi"
-9colab upload -s exp1 ./dataset.zip /content/dataset.zip
-9colab ssh -s exp1
-9colab stop -s exp1
+9colab exec -s exp-1 "nvidia-smi"
+9colab upload -s exp-1 ./data.parquet /content/data.parquet
+9colab ssh -s exp-1
+9colab stop -s exp-1
 ```
 
 ### 6. Run Jobs in Parallel Across Multiple Accounts
 
 ```bash
-# Run a script on all accounts simultaneously
-9colab run benchmark.py --gpu T4 --all
+# Run a script on all accounts at the same time
+9colab run sweep.py --gpu T4 --all
 
-# Run a command on specific accounts simultaneously
-9colab exec "nvidia-smi" --on pro1,pro2
+# Run a shell or Python snippet on selected accounts
+9colab exec "nvidia-smi" --on acc1,acc2,acc3
 
-# Stop all active sessions across all accounts
+# Stop all active sessions across every account
 9colab stop --all
 ```
 
 ---
 
-## Command Reference
+## Web Dashboard
 
-| Category | Command | Description |
-|---|---|---|
-| **Dashboard** | `9colab` / `9colab ui [--port N] [--no-open]` | Start the local web dashboard. |
-| **Account Management** | `9colab add [name]` | Authorize and save a new Google account profile (auto-names `acc1`, `acc2`, ... if omitted). |
-| | `9colab import [name]` | Copy `~/.config/colab-cli` into account `[name]`. |
-| | `9colab list` / `9colab usage` | Display compute units, GPUs, TPUs, and status across all accounts. |
-| | `9colab mode [B\|C\|round-robin\|fill-first]` | Show or change the account selection strategy. |
-| | `9colab account rm <name>` | Delete a saved account profile. |
-| | `9colab account clear-cooldown [name]` | Clear the HTTP 412 cooldown timer for one or all accounts. |
-| **Runtime Creation** | `9colab new [--gpu X] [-s NAME]` | Create a persistent Colab VM with automatic failover. |
-| | `9colab run SCRIPT [--gpu X]` | Run a Python script on a fresh Colab VM with automatic failover. |
-| **Multi-Account Views** | `9colab sessions` | List active sessions across all accounts. |
-| | `9colab whoami` | List account names and Google email addresses. |
-| **Session Operations** | `9colab exec\|repl\|console -s NAME` | Execute code, open a REPL, or attach to the raw TTY console. |
-| | `9colab ssh\|url\|status\|stop -s NAME` | Connect via SSH, print browser URL, check status, or stop a VM. |
-| | `9colab ls\|upload\|download\|edit\|rm -s NAME` | Manage files on the remote Colab VM. |
-| | `9colab install\|drivemount\|auth\|log -s NAME` | Install packages, mount Google Drive, authenticate GCP, or view logs. |
-| **Global Passthrough** | `9colab pay\|readme\|skill\|update\|version` | Forward directly to `colab`. |
+Start the dashboard with `9colab` or `9colab ui [--port 8765] [--no-open]`.
+
+- **5 Live KPI Cards**: Pool readiness, total CCU balance, hourly burn rate with remaining runtime estimate, active VM assignments, and hardware matrix.
+- **3 Telemetry Charts**:
+  1. **Compute Units by Account**: Horizontal bars comparing each account against the 200 CCU monthly grant.
+  2. **Accelerator Availability**: Percentage and count of accounts eligible for `A100`, `L4`, `G4`, `T4`, `H100`, `TPU V6E1`, and `TPU V5E1`.
+  3. **Router & Pool Composition**: Live pointer showing which account will take the next `9colab run` / `9colab new` job.
+- **Filter Tabs, Search, and Natural Sorting**: Filter by `All`, `Pro CCU (>0)`, `Free Tier`, `A100 / L4 / G4`, or `In Cooldown`. Sort naturally (`acc1, acc2, ..., acc11`) or by CCU balance.
+- **Privacy Mode (`Hide Emails` / `?mask=1`)**: One click masks email addresses (`ngu•••@gmail.com`) so you can share screenshots safely.
+- **Local-Only Security Guard**: Binds strictly to `127.0.0.1`, blocks foreign `Host` headers, and rejects non-JSON `POST` requests to prevent cross-site form attacks.
 
 ---
 
-## Security & Storage
+## Selection Modes & Failover
 
-- All account credentials live outside the repository in `~/.9colab/accounts/<name>/` with `0700` directory permissions and `0600` token permissions.
-- Set `NINECOLAB_HOME=/custom/path` to relocate the storage directory.
-- Run the offline test suite at any time:
+Switch between **Mode B** and **Mode C** from the Web UI or terminal:
+
+```bash
+# Mode B (default): Rotate across accounts in order (Round-Robin)
+9colab mode B
+
+# Mode C: Keep using one account until Colab refuses allocation, then advance (Fill-First)
+9colab mode C
+```
+
+### How Failover Works
+
+1. `9colab` orders candidate accounts according to the active mode (`B` or `C`) and skips accounts in cooldown.
+2. It runs `colab new` or `colab run` on the first candidate.
+3. If Colab returns HTTP 412 (`Allocation refused (precondition failed)`) or HTTP 400 (`Backend rejected accelerator`), `9colab` places that account in cooldown (default: 60 minutes) and immediately tries the next account.
+4. If the VM starts and your Python script itself raises an error, `9colab` exits with your script's error code and **does not** re-run the broken script on another account.
+
+---
+
+## Command Reference
+
+| Group | Command | Action |
+|---|---|---|
+| **Web Console** | `9colab` / `9colab ui [--port N] [--no-open]` | Start the local web dashboard. |
+| **Account Pool** | `9colab add [name]` | Log in a new Google account via OAuth2 (auto-names `acc1`, `acc2`, ...). |
+| | `9colab import [name]` | Import `~/.config/colab-cli` into `[name]`. |
+| | `9colab list` / `9colab usage` | Print parallel table of email, CCU, burn rate, GPUs, TPUs, and status. |
+| | `9colab mode [B\|C\|round-robin\|fill-first]` | Get or set the router selection strategy. |
+| | `9colab account rm <name>` | Remove a saved account profile. |
+| | `9colab account clear-cooldown [name]` | Reset cooldown timer for one or all accounts. |
+| **VM Creation** | `9colab new [--gpu X] [-s NAME]` | Allocate a new Colab session with automatic failover. |
+| | `9colab run SCRIPT [--gpu X]` | Run a Python script on a fresh VM with automatic failover. |
+| **Pool Views** | `9colab sessions` | List active sessions across all accounts. |
+| | `9colab whoami` | List all account aliases and Google email addresses. |
+| **Session Control** | `9colab exec\|repl\|console -s NAME` | Execute code, start an interactive REPL, or attach to the TTY console. |
+| | `9colab ssh\|url\|status\|stop -s NAME` | Open SSH, print browser URL, inspect status, or terminate a VM. |
+| | `9colab ls\|upload\|download\|edit\|rm -s NAME` | List, transfer, edit, or delete files on the remote runtime. |
+| | `9colab install\|drivemount\|auth\|log -s NAME` | Install packages, mount Google Drive, authenticate GCP, or export logs. |
+| **Passthrough** | `9colab pay\|readme\|skill\|update\|version` | Forward directly to `colab`. |
+
+---
+
+## Security & Development
+
+- Account profiles live outside the repository at `~/.9colab/accounts/<name>/` with `0700` directory permissions and `0600` token permissions.
+- Set `NINECOLAB_HOME=/custom/path` to customize the storage path.
+- Run the offline test suite (22 unit tests, zero network calls):
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome at [github.com/nguyenanhducdeveloper86/9colabs](https://github.com/nguyenanhducdeveloper86/9colabs).
+
+1. Fork the repository and create a feature branch.
+2. Ensure all unit tests pass (`PYTHONPATH=src python3 -m unittest discover -s tests -v`).
+3. Submit a pull request.
 
 ---
 

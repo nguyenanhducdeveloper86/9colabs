@@ -18,6 +18,7 @@ from ninecolab.accounts import (
     fetch_account_status,
     fetch_email,
     get_valid_access_token,
+    natural_key,
     validate_account_name,
 )
 from ninecolab.pick import (
@@ -276,7 +277,7 @@ def cmd_list(store: AccountStore) -> int:
         for fut in as_completed(futs):
             rows.append(fut.result())
 
-    rows.sort(key=lambda r: r["account"])
+    rows.sort(key=lambda r: natural_key(r["account"]))
     header = (
         f"{'ACCOUNT':<12} {'EMAIL':<34} {'UNITS':>8} {'RATE/HR':>8} "
         f"{'SESSIONS':>8} {'GPUS':<14} {'TPUS':<10} {'STATUS'}"

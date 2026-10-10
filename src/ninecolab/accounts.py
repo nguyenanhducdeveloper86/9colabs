@@ -24,6 +24,10 @@ class SessionLookupError(RuntimeError):
     """Raised when session ownership is missing or ambiguous across accounts."""
 
 
+def natural_key(name: str) -> list[Any]:
+    return [int(p) if p.isdigit() else p.lower() for p in re.split(r"(\d+)", name)]
+
+
 def validate_account_name(name: str) -> str:
     cleaned = name.strip()
     if not NAME_PATTERN.match(cleaned):
@@ -31,7 +35,6 @@ def validate_account_name(name: str) -> str:
             f"Invalid account name '{name}'. Use letters, digits, '-' or '_'."
         )
     return cleaned
-
 
 def parse_xssi_json(raw: str) -> dict[str, Any]:
     body = raw.split("\n", 1)[1] if raw.startswith(")]}'") else raw
@@ -80,7 +83,7 @@ class AccountStore:
             for p in self.accounts_dir.iterdir()
             if p.is_dir() and (p / ".config" / "colab-cli" / "token.json").is_file()
         ]
-        return sorted(names)
+        return sorted(names, key=natural_key)
 
     def next_account_name(self, prefix: str = "acc") -> str:
         existing = set(self.list_accounts())
