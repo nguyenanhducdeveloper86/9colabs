@@ -13,3 +13,5 @@ sessions.json
 *.lock
 .9colab/
 .DS_Store
+tests/
+docs/superpowers/

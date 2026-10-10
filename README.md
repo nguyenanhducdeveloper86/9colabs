@@ -231,15 +231,10 @@ Switch between **Mode B** and **Mode C** from the Web UI or terminal:
 
 ---
 
-## Security & Development
+## Security & Storage
 
 - Account profiles live outside the repository at `~/.9colab/accounts/<name>/` with `0700` directory permissions and `0600` token permissions.
 - Set `NINECOLAB_HOME=/custom/path` to customize the storage path.
-- Run the offline test suite (22 unit tests, zero network calls):
-
-```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-```
 
 ---
 
@@ -248,9 +243,8 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Issues and pull requests are welcome at [github.com/nguyenanhducdeveloper86/9colabs](https://github.com/nguyenanhducdeveloper86/9colabs).
 
 1. Fork the repository and create a feature branch.
-2. Ensure all unit tests pass (`PYTHONPATH=src python3 -m unittest discover -s tests -v`).
+2. Test your changes locally with `uv tool install --force .`.
 3. Submit a pull request.
-
 ---
 
 ## License
